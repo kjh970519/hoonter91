@@ -1,0 +1,12 @@
+User-agent: *
+Disallow: /data/
+Disallow: /mng/
+Disallow: /manage/
+Disallow: /layout/
+Disallow: /lib/
+Disallow: /mod/
+Disallow: /plugin/
+Disallow: /sign/
+Disallow: /member/
+Disallow: /popup/
+Disallow: /doc/

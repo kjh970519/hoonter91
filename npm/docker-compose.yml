@@ -1,0 +1,22 @@
+version: "3"
+
+services:
+  npm:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    restart: always
+    environment:
+      DISABLE_IPV6: "true"
+    ports:
+      - "80:80"
+      - "81:81"
+      - "443:443"
+    volumes:
+      - ./data:/data
+      - ./letsencrypt:/etc/letsencrypt
+    networks:
+      - web_proxy
+
+networks:
+  web_proxy:
+    external: true

@@ -1,0 +1,653 @@
+//
+// Ajax Validator
+//
+ajax_valid = {
+
+	'init' : function() {
+		this.action();
+	},
+
+	'action' : function() {
+		var $ele = $('*[data-validt-event]');
+
+		if ($ele.length > 0) {
+			$ele.each(function() {
+				var $this = $(this);
+				var action = $this.data('validt-action');
+				var evt = $this.data('validt-event');
+				var group = $this.data('validt-group');
+				var $validt = $('.validt[data-validt-group='+group+']');
+
+				$validt.hide();
+				$(document).on(evt, 'input[name="'+group+'"]', function(e){
+					var chk_var = true;
+					if ($(this).val() === '') {
+						chk_var = false;
+						$validt.hide();
+					}
+
+					if (chk_var) {
+						$.ajax({
+							'type' : 'POST',
+							'url' : PH_DIR + action,
+							'cache' : false,
+							'data' : $('input[name="' + group+'"]').serialize(),
+							'dataType' : 'html',
+							'success' : function(data){
+								if(data.indexOf('"success" :') === -1){
+									zigalert('일시적인 오류 : '+data);
+									return false;
+								}
+								var json = eval(data);
+								var success = json[0].success;
+								var opt = json[0].opt[0];
+
+								switch (success) {
+									case 'error' :
+										$validt.show().text(opt.msg).removeClass('checked');
+										break;
+
+									case 'ajax-validt' :
+										$validt.show().text(opt.msg).addClass('checked');
+										break;
+
+									default :
+										zigalert('일시적인 오류 : '+data);
+								}
+							}
+						});
+					}
+				});
+			});
+		}
+	}
+
+}
+$(function(){
+	ajax_valid.init();
+});
+
+//
+// Ajax Form Validator
+//
+valid = {
+
+	'error' : function($form, opt) {
+
+		if (opt.input) {
+			var $inp = $('*[name="' + opt.input + '"]', $form);
+			var inp_tit = $inp.attr('title');
+		}
+
+		if ($.trim(opt.err_code) === 'ERR_NULL') {
+			zigalert(inp_tit + ' : 입력해 주세요.', function(result) {
+				if (opt.input && result) $inp.focus();
+			});
+
+		} else if ($.trim(opt.err_code) === 'NOTMATCH_CAPTCHA') {
+			zigalert('Captcha(스팸방지)가 올바르지 않습니다.', function(result) {
+				if (opt.input && result) $inp.focus();
+			});
+			
+
+		} else if ($.trim(opt.msg) !== '') {
+            if (typeof inp_tit != 'undefined' && typeof inp_tit != 'null') {
+				zigalert(inp_tit + ' : ' + opt.msg, function(result) {
+					if (opt.input && result) $inp.focus();
+				});
+
+            } else {
+                zigalert(opt.msg, function(result) {
+					if (opt.input && result) $inp.focus();
+				});
+            }
+
+		} else {
+			zigalert(inp_tit + ' : 올바르게 입력해 주세요.', function(result) {
+				if (opt.input && result) $inp.focus();
+			});
+		}
+	},
+
+	'success' : function($form,success,opt) {
+
+		switch (success) {
+			case 'alert->location' :
+				if ($.trim(opt.msg) !== '') {
+					zigalert(opt.msg, function(result) {
+						if (result) {
+							window.document.location.href = opt.location;
+						}
+					});
+				} else {
+					window.document.location.href = opt.location;
+				}
+				break;
+
+			case 'alert->reload' :
+				if ($.trim(opt.msg) !== '') {
+					zigalert(opt.msg, function(result) {
+						if (result) {
+							window.document.location.reload();
+						}
+					});
+				} else {
+					window.document.location.reload();
+				}
+				break;
+
+			case 'callback':
+				if ($.trim(opt.function) !== '') {
+					eval(opt.function);
+				}
+				break;
+
+			case 'callback-txt':
+				if ($.trim(opt.element) !== '') {
+					var tagName = $(opt.element).prop('tagName').toLowerCase();
+					if (tagName === "input" || tagName === "textarea") {
+						$(opt.element).val(opt.msg);
+					} else {
+						$(opt.element).html(opt.msg);
+					}
+				}
+				break;
+
+			case 'alert->close->opener-reload':
+				opener.document.location.reload();
+				window.close();
+				break;
+
+			case 'ajax-load':
+				if ($.trim(opt.element) !== '') {
+					$(opt.element).load(opt.document);
+				}
+				break;
+
+			case 'none':
+				return false;
+				break;
+		}
+	}
+
+}
+
+//
+// Return Ajax Submit
+//
+returnAjaxSubmit = function($form, data) {
+
+    var trim_data = data.replace(/(<([^>]+)>)/ig, '');
+
+	if (data.indexOf('"success" :') === -1) {
+		zigalert('일시적인 오류 : ' + trim_data);
+		return false;
+	}
+
+    var first_char = data.replace(/^\s+|\s+$/g, '');
+    first_char = first_char.charAt(0);
+
+    if (first_char !== '[') {
+        zigalert('일시적인 오류 : ' + trim_data);
+        return false;
+    }
+
+	var json = eval(data);
+
+	var success = json[0].success;
+	var opt = json[0].opt[0];
+
+	switch (success) {
+		case 'error' :
+			valid.error($form,opt);
+			break;
+
+		case 'alert->location' :
+		case 'alert->reload' :
+		case 'callback' :
+		case 'callback-txt' :
+		case 'alert->close->opener-reload' :
+		case 'ajax-load' :
+		case 'none' :
+			valid.success($form, success, opt);
+			break;
+		default :
+			zigalert('일시적인 오류 : ' + trim_data);
+	}
+}
+
+//
+// Plugin : CKEditor
+//
+function ckeEditor_action() {
+
+	$('textarea[ckeditor]').each(function() {
+		var t_id = $(this).attr('id');
+		var t_cont = CKEDITOR.instances[t_id].getData();
+		$(this).val(t_cont);
+	});
+
+}
+
+//
+// Ajax Submit
+//
+ajaxSubmit = {
+
+	'init' : function($form) {
+		this.action($form);
+	},
+
+	'action' : function($form) {
+        ckeEditor_action();
+
+		var ajaxAction = $form.attr('ajax-action');
+
+        $.ajax({
+            'type' : 'POST',
+            'url' : ajaxAction,
+            'cache' : false,
+            'async' : true,
+            'data' : $form.find('input, select, textarea').serialize(),
+            'dataType' : 'html',
+            'beforeSend' : function() {
+                $form.find('button, :button').attr('disabled', true);
+            },
+            'success' : function(data) {
+                returnAjaxSubmit($form,data);
+                $form.find('button, :button').attr('disabled', false);
+            }
+        });
+	}
+
+}
+
+//
+// Ajax Submit With File
+//
+ajaxFileSubmit = {
+
+	'init' : function($form) {
+		this.action($form);
+	},
+
+    'action' : function($form) {
+        ckeEditor_action();
+
+        var ajaxAction = $form.attr('ajax-action');
+        var formData = new FormData();
+
+        $form.find('input, select, textarea').each(function() {
+            var ele_name = $(this).attr('name');
+            var ele_type = $(this).attr('type');
+
+            switch (ele_type) {
+                case 'file' :
+                    formData.append(ele_name, $(this)[0].files[0]);
+                    break;
+
+                case 'checkbox' :
+                case 'radio' :
+                    if ($(this).prop('checked') == false) {
+                        return;
+                    }
+
+                default :
+                    formData.append(ele_name, $(this)[0].value);
+            }
+        });
+
+		var post_max_size = 0;
+		
+		$form.find('input:file').each(function() {
+			var fileInput = $(this);
+			if (fileInput[0].files.length > 0) {
+				post_max_size += (fileInput[0].files[0].size / 1024 / 1024);
+			}
+        });
+		
+		if (PH_POST_MAX_SIZE > 0 && post_max_size > PH_POST_MAX_SIZE) {
+			zigalert('서버의 첨부 가능한 허용 용량을 초과하였습니다.');
+			return false;
+		}
+
+		$.ajax({
+            'type' : 'POST',
+            'url' : ajaxAction,
+            'cache' : false,
+            'async' : true,
+            'data' : formData,
+            'contentType' : false,
+            'processData' : false,
+            'dataType' : 'html',
+            'beforeSend' : function() {
+                $form.find('button,:button').attr('disabled', true);
+				$form.append('<div class="form-progress"><div class="track"><div class="bar"></div></div></div>');
+            },
+            'success' : function(data) {
+                returnAjaxSubmit($form, data);
+                $form.find('button, :button').attr('disabled', false);
+				$form.find('.form-progress').remove();
+            },
+			'xhr' : function() {
+				// make progress
+				var xhr = new window.XMLHttpRequest();
+
+				xhr.upload.addEventListener('progress', function(e) {
+					if (e.lengthComputable) {
+						var percentComplete = (e.loaded / e.total) * 100;
+
+						$form.find('.form-progress .bar').css({
+							'width' : percentComplete + '%'
+						});
+					}
+				}, false);
+
+				return xhr;
+			}
+        });
+    }
+
+}
+
+//
+// Ajax Form을 본문에서 찾아 Form setting
+//
+setAjaxForm = {
+
+	'init' : function() {
+		this.action();
+	},
+
+	'action' : function() {
+		var $ele = {
+			'doc' : $(document)
+		}
+
+		$ele.doc.on('submit', 'form[ajax-action]', function(e) {
+			var ajaxType = $(this).attr('ajax-type');
+
+			switch (ajaxType) {
+				case 'multipart' :
+					e.preventDefault();
+					ajaxFileSubmit.init($(this));
+					break;
+
+				case 'html' :
+					e.preventDefault();
+					ajaxSubmit.init($(this));
+					break;
+			}
+		});
+	}
+
+}
+
+$(function() {
+	setAjaxForm.init();
+});
+
+//
+// Cookie
+//
+function setCookie(name, value, expiredays) {
+
+	var todayDate = new Date();
+	if (expiredays === null) {
+		expiredays = 30;
+	}
+	// Cookie 저장 시간 (1Day = 1)
+	todayDate.setDate(todayDate.getDate() + expiredays);
+	document.cookie = name + '=' + escape( value ) + '; path=/; expires=' + todayDate.toGMTString() + ';'
+
+}
+
+function getCookie(name) {
+
+    var nameOfCookie = name + '=';
+    var x = 0;
+
+    while (x <= document.cookie.length) {
+        var y = (x + nameOfCookie.length);
+        if (document.cookie.substring(x,y) === nameOfCookie) {
+            if ((endOfCookie = document.cookie.indexOf(';', y)) === -1) {
+                endOfCookie = document.cookie.length;
+            }
+            return unescape(document.cookie.substring(y, endOfCookie));
+        }
+        x = document.cookie.indexOf(' ', x) + 1;
+        if (x === 0) {
+            break;
+        }
+    }
+    return '';
+
+}
+
+//
+// Before confirm
+//
+formBeforeConfirm = {
+
+    'init' : function() {
+        this.action();
+    },
+
+    'action' : function() {
+        $(document).on('click', '*[data-form-before-confirm]', function(e) {
+            e.preventDefault();
+
+            var $this = $(this);
+            var val = $(this).data('form-before-confirm');
+            var val_exp = val.split('=>');
+
+            for (var i=0; i < val_exp.length; i++) {
+                val_exp[i] = val_exp[i].replace(/^\s+|\s+$/g, '');
+            }
+
+			val_exp[0] = val_exp[0].replace(/\\r?\\n/g, "<br />");
+			
+			zigconfirm(val_exp[0], function(result) {
+				if (result) {
+					var $form = $this.closest('form')
+					var $inp = new Array;
+					var org_val = new Array;
+	
+					for (var i = 1; i < val_exp.length; i++) {
+						$inp[i] = $('input[name="' + val_exp[i].split(':')[0] + '"]' ,$form);
+						org_val[i] = $('input[name="' + val_exp[i].split(':')[0] + '"]').val();
+						$inp[i].val(val_exp[i].split(':')[1])
+					}
+	
+					$form.closest('form').submit();
+	
+					for (var i = 1; i < $inp.length; i++) {
+						$inp[i].val(org_val[i]);
+					}
+				}
+			});
+        });
+    }
+
+}
+
+$(function(){
+    formBeforeConfirm.init();
+});
+
+//
+// Setting Tabindex & Handling Enter Key
+//
+set_elements_tabindex = function() {
+
+	// Tabindex data attributes
+    $('button, input[type!="hidden"], a, *[tabindex]').each(function(i) {
+        if ($(this).closest('*[data-no-tab-index]').length > 0) {
+            return;
+        }
+
+        $(this).attr('data-tab-index', i);
+    });
+
+	// Enter key click on lebel
+	$(document).on('keydown', 'label', function(e) {
+		var $this = $(this);
+		if (e.keyCode == '13') {
+			e.preventDefault();
+			if ($this.prev('input').length > 0) $this.prev('input').click();
+			if ($this.next('input').length > 0) $this.next('input').click();
+			if ($this.find('input').length > 0) $this.find('input').click();
+		}
+	});
+
+}
+make_elements_tabindex = {
+    'init' : function() {
+        this.action();
+    },
+    'action' : function() {
+
+        set_elements_tabindex();
+        $(document).on('click', 'button, input, a, *[tabindex]', function() {
+            var tab_index = $(this).data('tab-index');
+
+            if (tab_index) {
+                PH_NOW_TABINDEX = tab_index;
+            }
+        });
+    }
+}
+
+$(function() {
+    make_elements_tabindex.init();
+    setInterval(set_elements_tabindex, 100);
+});
+
+//
+// Zigger Alert
+//
+get_zigalert = function(msg) {
+	return new Promise(function(resolve, reject) {
+
+		var $ele = {
+			'wrap' : $('#zig-alert-wrap'),
+			'alert' : $('#zig-alert')
+		}
+
+		$ele.alert.find('.content p').html(msg);
+		$ele.alert.show().addClass('show').find('button').focus();
+		
+		// button click시 처리
+		$ele.alert.find('button.yes').click(function() {
+			$ele.wrap.remove();
+			$ele.alert.remove();
+			resolve(true);
+			$('*[data-tab-index='+PH_NOW_TABINDEX+']').focus();
+		});
+
+		$(document).keydown(function(e) {
+			if (e.keyCode === 27 && $ele.alert.length > 0) {
+				$ele.alert.find('button.yes').click();
+			}
+		});
+	});
+}
+
+zigalert = function(msg, callback) {
+	var $ele = {
+        'wrap' : $('#zig-alert-wrap'),
+        'alert' : $('<div id="zig-alert-wrap"><div id="zig-alert"><div class="content"><p></p></div><div class="button"><button class="yes">확인</button></div></div>')
+    }
+
+	msg = msg.replace(/\r?\n/g, "<br />");
+
+	if ($ele.wrap.length < 1) {
+        $ele.alert.appendTo('body');
+    }
+	
+	get_zigalert(msg).then(function(result) {
+		if (callback) callback(result);
+	});
+}
+
+//
+// Zigger Confirm
+//
+get_zigconfirm = function(msg) {
+	return new Promise(function(resolve, reject) {
+
+		var $ele = {
+			'wrap' : $('#zig-confirm-wrap'),
+			'alert' : $('#zig-confirm')
+		}
+
+		$ele.alert.find('.content p').html(msg);
+		$ele.alert.show().addClass('show').find('button.yes').focus();
+		
+		// button click시 처리
+		$ele.alert.find('button.yes').click(function() {
+			$ele.wrap.remove();
+			$ele.alert.remove();
+			resolve(true);
+			$('*[data-tab-index='+PH_NOW_TABINDEX+']').focus();
+		});
+		
+		$ele.alert.find('button.no').click(function() {
+			$ele.wrap.remove();
+			$ele.alert.remove();
+			resolve(false);
+			$('*[data-tab-index='+PH_NOW_TABINDEX+']').focus();
+		});
+
+		$(document).keydown(function(e) {
+			if (e.keyCode === 27 && $ele.alert.length > 0) {
+				$ele.alert.find('button.no').click();
+			}
+		});
+	});
+}
+
+zigconfirm = function(msg, callback) {
+	if (!msg) {
+		callback(true);
+		return;
+	}
+
+	msg = msg.replace(/\r?\n/g, "<br />");
+	 
+	var $ele = {
+        'wrap' : $('#zig-confirm-wrap'),
+        'alert' : $('<div id="zig-confirm-wrap"><div id="zig-confirm"><div class="content"><p></p></div><div class="button"><button class="yes">확인</button><button class="no">닫기</button></div></div>')
+    }
+
+	if ($ele.wrap.length < 1) {
+        $ele.alert.appendTo('body');
+    }
+
+	get_zigconfirm(msg).then(function(result) {
+		if (callback) callback(result);
+	});
+}
+
+//
+// check device & agent
+//
+
+get_device = function() {
+	const breakpoints = {
+		'mo' : window.matchMedia("(max-width: 750px)"),
+		'ta' : window.matchMedia("(min-width: 750px) and (max-width: 1000px)"),
+		'pc' : window.matchMedia("(min-width: 1000px)")
+	};
+	
+	for (const key in breakpoints) {
+		if (breakpoints[key].matches) {
+			return key;
+		}
+	}
+}
+
+get_agent = function() {
+	if (navigator.userAgent.match(/Android/i) || navigator.userAgent.match(/webOS/i) || navigator.userAgent.match(/iPhone/i) || navigator.userAgent.match(/iPad/i) || navigator.userAgent.match(/iPod/i) || navigator.userAgent.match(/BlackBerry/i) || navigator.userAgent.match(/Windows Phone/i) || navigator.maxTouchPoints == 5) return 'mo';
+	return 'pc';
+}

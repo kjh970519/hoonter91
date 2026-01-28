@@ -1,0 +1,513 @@
+<?php
+namespace Module\Board;
+
+use Corelib\Method;
+use Corelib\Func;
+use Make\Library\Paging;
+use Make\Database\Pdosql;
+use Module\Board\Library as Board_Library;
+
+//
+// Module Controller
+// ( Result )
+//
+class Result extends \Controller\Make_Controller {
+
+    public function init()
+    {
+        global $MOD_CONF, $boardconf;
+
+        $req = Method::request('get', 'board_id, is_ftlist');
+
+        $board_id = (isset($req['board_id'])) ? $req['board_id'] : $MOD_CONF['id'];
+
+        if ($req['is_ftlist'] == 'Y') $board_id = $req['board_id'];
+
+        $boardlib = new Board_Library();
+        $boardconf = $boardlib->load_conf($board_id);
+
+        $this->layout()->view(MOD_BOARD_THEME_PATH.'/board/'.$boardconf['theme'].'/results.tpl.php');
+    }
+
+    public function func()
+    {
+        // 전체 게시글 개수
+        function total_cnt($notice_cnt, $total_cnt)
+        {
+            return Func::number($notice_cnt + $total_cnt);
+        }
+
+        // 제목
+        function print_subject($arr)
+        {
+            global $boardconf;
+
+            if (!$arr['dregdate']) {
+                return reply_ico($arr).Func::strcut($arr['subject'],0,$boardconf['sbj_limit']);
+
+            } else {
+                return reply_ico($arr).'<strike>'.$arr['dregdate'].'에 삭제된 게시글입니다.'.'</strike>';
+            }
+        }
+
+        // link
+        function get_link($arr, $page, $category, $where, $keyword, $thisuri)
+        {
+            $link = $thisuri.'/'.$arr['idx'];
+            $param = array();
+            $vars = array('page' => $page, 'category' => $category, 'where' => $where, 'keyword' => $keyword);
+
+            foreach ($vars as $key => $value) {
+                if ($value != '') $param[] = $key.'='.$value;
+            }
+
+            $paramImp = implode('&', $param);
+
+            return $link.Func::get_param_combine($paramImp, '?');
+        }
+
+        // 내용
+        function print_article($arr)
+        {
+            global $boardconf;
+            
+            $html = Func::htmldecode($arr['article']);
+            $html = str_replace('&nbsp;', ' ', $html);
+            $html = preg_replace('/\s+/', ' ', $html);
+            $html = Func::strcut(strip_tags($html), 0, $boardconf['txt_limit']);
+            return $html;
+        }
+
+        // 첨부파일 아이콘
+        function file_ico($arr)
+        {
+            global $boardconf;
+
+            if ($boardconf['ico_file'] == 'Y' && !empty($arr['file1'])) {
+                if ($arr['file1'] == 'image') {
+                    return '<img src="'.MOD_BOARD_THEME_DIR.'/images/picture-ico.png" align="absmiddle" title="이미지파일" alt="이미지파일" />';
+                } else {
+                    return '<img src="'.MOD_BOARD_THEME_DIR.'/images/file-ico.png" align="absmiddle" title="파일" alt="파일" />';
+                }
+
+            } else {
+                return '';
+            }
+        }
+
+        // 답글 아이콘
+        function reply_ico($arr)
+        {
+            $nbsp = '';
+            if ($arr['rn'] > 0) {
+                for ($i = 1; $i <= $arr['rn']; $i++) $nbsp .= '&nbsp;&nbsp;';
+                return $nbsp.'<img src="'.MOD_BOARD_THEME_DIR.'/images/reply-ico.png" align="absmiddle" title="답글" alt="답글" class="reply-ico" />&nbsp;';
+            }
+        }
+
+        // 비밀글 아이콘
+        function secret_ico($arr)
+        {
+            global $boardconf;
+
+            if ($arr['use_secret'] == 'Y' && $boardconf['ico_secret'] == 'Y') {
+                return '<img src="'.MOD_BOARD_THEME_DIR.'/images/secret-ico.png" align="absmiddle" title="비밀글" alt="비밀글" />';
+            }
+        }
+
+        // new 아이콘
+        function new_ico($arr)
+        {
+            global $boardconf;
+
+            $now_date = date('Y-m-d H:i:s');
+            $wr_date = date('Y-m-d H:i:s', strtotime($arr['regdate']));
+
+            if (((strtotime($now_date) - strtotime($wr_date)) / 60) < $boardconf['ico_new_case'] && $boardconf['ico_new'] == 'Y') {
+                return '<img src="'.MOD_BOARD_THEME_DIR.'/images/new-ico.png" align="absmiddle" title="NEW" alt="NEW" />';
+            }
+        }
+
+        // hot 아이콘
+        function hot_ico($arr)
+        {
+            global $boardconf;
+
+            $ico_hot_case = explode('|', $boardconf['ico_hot_case']);
+
+            if ($boardconf['ico_hot'] == 'Y') {
+                if (($ico_hot_case[1] == 'and' && $arr['likes_cnt'] >= $ico_hot_case[0] && $arr['view'] >= $ico_hot_case[2]) || ($ico_hot_case[1] == 'OR' && ($arr['likes_cnt'] >= $ico_hot_case[0] || $arr['view'] >= $ico_hot_case[2]))) {
+                    return '<img src="'.MOD_BOARD_THEME_DIR.'/images/hot-ico.png" align="absmiddle" title="HOT" alt="HOT" />';
+                }
+            }
+        }
+
+        // 댓글 개수
+        function comment_cnt($arr)
+        {
+            global $boardconf;
+
+            if ($arr['comment_cnt'] > 0 && $boardconf['use_comment'] == 'Y') {
+                return Func::number($arr['comment_cnt']);
+            }
+        }
+
+        // 관리 버튼
+        function ctr_btn()
+        {
+            global $MB, $boardconf;
+
+            if ($MB['level'] <= $boardconf['ctr_level']) {
+                return '<button type="button" class="btn2" id="list-ctr-btn"><i class="fa fa-ellipsis-v"></i> 선택 관리</button>';
+            }
+        }
+
+        // 작성 버튼
+        function write_btn($page, $where, $keyword, $category, $thisuri)
+        {
+            global $MB, $boardconf;
+
+            if ($MB['level'] <= $boardconf['write_level']) {
+                return '<a href="'.$thisuri.Func::get_param_combine('mode=write&category='.urlencode($category).'&page='.$page.'&where='.$where.'&keyword='.urlencode($keyword), '?').'" class="btn1">글 작성</a>';
+            }
+        }
+
+        // 게시물 번호
+        function print_number($arr, $read, $number)
+        {
+            return ($read == $arr['idx']) ? '<i class="fa fa-angle-right"></i>' : $number;
+        }
+
+        // 회원 프로필
+        function print_profileimg($arr)
+        {
+            if ($arr['mb_profileimg']) {
+                $fileinfo = Func::get_fileinfo($arr['mb_profileimg']);
+                return (isset($fileinfo['replink']) && !empty($fileinfo['replink'])) ? $fileinfo['replink'] : false;
+
+            } else {
+                return false;
+            }
+        }
+
+        // 회원 이름
+        function print_writer($arr, $thisuri)
+        {
+            return ($arr['mb_idx'] != 0) ? '<a href="'.$thisuri.'" data-profile="'.$arr['mb_idx'].'">'.$arr['writer'].'</a>' : $arr['writer'];
+        }
+
+        //카테고리
+        function print_category($category, $where, $keyword, $thisuri)
+        {
+            global $boardconf;
+
+            if (!$boardconf['category']) return;
+
+            $cat_exp = explode('|', $boardconf['category']);
+            $html = '<ul>';
+
+            for ($i = 0; $i <= count($cat_exp); $i++) {
+                $j = $i - 1;
+
+                if ($j == -1) {
+                    if ($category) {
+                        $html .= '<li><a href="'.$thisuri.'?where='.$where.'&keyword='.urlencode($keyword).'">전체</a></li>'.PHP_EOL;
+
+                    } else {
+                        $html .= '<li class="active"><a href="'.$thisuri.'?where='.$where.'&keyword='.urlencode($keyword).'">전체</a></li>'.PHP_EOL;
+                    }
+
+                } else if ($category == $cat_exp[$j]) {
+                    $html .= '<li class="active"><a href="'.$thisuri.'?category='.urlencode($cat_exp[$j]).'&where='.$where.'&keyword='.urlencode($keyword).'">'.$cat_exp[$j].'</a></li>'.PHP_EOL;
+
+                } else {
+                    $html .= '<li><a href="'.$thisuri.'?category='.urlencode($cat_exp[$j]).'&where='.$where.'&keyword='.urlencode($keyword).'">'.$cat_exp[$j].'</a></li>'.PHP_EOL;
+                }
+            }
+
+            $html .= '</ul>';
+
+            return $html;
+        }
+
+        // 썸네일 추출
+        function thumbnail($arr)
+        {
+            global $CONF, $board_id;
+
+            $tmb = '';
+
+            // DEBUG
+            error_log('THUMB_DEBUG: file1=' . ($arr['file1'] ?? 'NULL') . ', file2=' . ($arr['file2'] ?? 'NULL') . ', article_len=' . strlen($arr['article'] ?? ''));
+            error_log('THUMB_DEBUG: article_sample=' . substr($arr['article'] ?? '', 0, 500));
+
+            // file2에서 썸네일 추출
+            if ($arr['file2']) {
+                $fileinfo = Func::get_fileinfo($arr['file2']);
+                $tmb = ($fileinfo['storage'] == 'Y') ? $fileinfo['replink'] : PH_DOMAIN.PH_DATA_DIR.$fileinfo['filepath'].'/thumb/'.$arr['file2'];
+            }
+            // file1에서 썸네일 추출
+            else if ($arr['file1']) {
+                $fileinfo = Func::get_fileinfo($arr['file1']);
+                if ($fileinfo) {
+                    $tmb = ($fileinfo['storage'] == 'Y') ? $fileinfo['replink'] : PH_DOMAIN.PH_DATA_DIR.$fileinfo['filepath'].'/thumb/'.$arr['file1'];
+                }
+            }
+            // 본문에서 첫 번째 이미지 추출
+            else if ($arr['article']) {
+                preg_match('/<img[^>]+src=["\']([^"\']+)["\']/', $arr['article'], $matches);
+                error_log('THUMB_DEBUG: regex matches=' . print_r($matches, true));
+                if (!empty($matches[1])) {
+                    $img_src = $matches[1];
+                    // 상대 경로인 경우 도메인 추가
+                    if (strpos($img_src, 'http') !== 0) {
+                        $img_src = PH_DOMAIN . $img_src;
+                    }
+                    $tmb = $img_src;
+                }
+            }
+
+            error_log('THUMB_DEBUG: result=' . $tmb);
+
+            return $tmb;
+        }
+
+        // 썸네일 추출 (이전 버전)
+        function thumbnail_old($arr)
+        {
+            global $CONF, $board_id;
+            
+            $tmb = '';
+            
+            if ($arr['file2']) {
+                $fileinfo = Func::get_fileinfo($arr['file2']);
+                $tmb = ($fileinfo['storage'] == 'Y') ? $fileinfo['replink'] : PH_DOMAIN.PH_DATA_DIR.$fileinfo['filepath'].'/thumb/'.$arr['file2'];
+            }
+            
+            return $tmb;
+        }
+
+        // where selectbox 선택 처리
+        function where_slted($where)
+        {
+            $arr = array('all', 'subjectAndArticle', 'subject', 'article', 'writer', 'mb_id');
+            $opt = array();
+
+            foreach ($arr as $key => $value) {
+                $opt[$value] = ($where == $value) ? 'selected' : '';
+            }
+
+            return $opt;
+        }
+
+        // 검색 keyword 분리
+        function exp_keywords($keyword) {
+            $exp = explode(' ', $keyword);
+
+            $key_arr = array();
+
+            for ($i = 0; $i < count($exp); $i++) {
+                $key_arr[$i] = $exp[$i];
+            }
+
+            return $key_arr;
+        }
+
+        // list arr setting
+        function get_listarr($req, $arr, $paging, $thisuri, $keyword, $category)
+        {
+            $arr['view'] = Func::number($arr['view']);
+            $arr['date'] = Func::date($arr['regdate']);
+            $arr['datetime'] = Func::datetime($arr['regdate']);
+            $arr[0]['number'] = print_number($arr, $req['read'], $paging->getnum());
+            $arr[0]['get_link'] = get_link($arr, $req['page'], $category, $req['where'], $keyword, $thisuri);
+            $arr[0]['secret_ico'] = secret_ico($arr);
+            $arr[0]['file_ico'] = file_ico($arr);
+            $arr[0]['new_ico'] = new_ico($arr);
+            $arr[0]['hot_ico'] = hot_ico($arr);
+            $arr[0]['subject'] = print_subject($arr);
+            $arr[0]['article'] = print_article($arr);
+            $arr[0]['comment_cnt'] = comment_cnt($arr);
+            $arr[0]['writer'] = print_writer($arr, $req['thisuri']);
+            $arr[0]['profileimg'] = print_profileimg($arr);
+            $arr[0]['thumbnail'] = thumbnail($arr);
+
+            return $arr;
+        }
+    }
+
+    public function make()
+    {
+        global $MB, $MOD_CONF, $boardconf, $board_id, $search;
+
+        $sql = new Pdosql();
+        $boardlib = new Board_Library();
+        $paging = new Paging();
+
+        $req = Method::request('get', 'page, where, keyword, read, category, thisuri, is_ftlist');
+
+        if (!$req['is_ftlist']) $board_id = $MOD_CONF['id'];
+        if ($req['is_ftlist'] == 'Y') {
+            $ft_req = Method::request('get','board_id, thisuri');
+            $board_id = $ft_req['board_id'];
+        }
+
+        $thisuri = (isset($ft_req['thisuri'])) ? $ft_req['thisuri'] : Func::thisuri();
+
+        // add title
+        if (!$req['is_ftlist']) Func::add_title($boardconf['title']);
+
+        //add stylesheet & javascript
+        if (!$req['is_ftlist']) $boardlib->print_headsrc($boardconf['theme']);
+
+        //접근 권한 검사
+        if (!IS_MEMBER && $MB['level'] > $boardconf['list_level']) {
+            Func::getlogin(SET_NOAUTH_MSG);
+
+        } else if (IS_MEMBER && $MB['level'] > $boardconf['list_level']) {
+            Func::err_location('접근 권한이 없습니다.', PH_DOMAIN);
+        }
+
+        // 카테고리 처리
+        $category = (!empty($req['category'])) ? urldecode($req['category']) : '';
+        $search = '';
+        $cols = array();
+
+        if ($category) $search = 'and board.category=\''.addslashes($req['category']).'\'';
+
+        //검색 키워드 처리
+        $keyword = (!empty($req['keyword'])) ? $req['keyword'] : '';
+        $keyword_decode = urldecode($keyword);
+
+        if ($keyword) {
+            $where = array('', '', '', '', '');
+
+            foreach (exp_keywords($keyword_decode) as $key => $value) {
+                $or = ($key > 0) ? ' and ' : '';
+                $where[0] .= $or.' board.subject like :keyword'.$key;
+                $where[1] .= $or.' board.article like :keyword'.$key;
+                $where[2] .= $or.' board.writer like :keyword'.$key;
+                $where[3] .= $or.' board.mb_id like :keyword'.$key;
+
+                $cols['keyword'.$key] = '%'.$value.'%';
+            }
+
+            switch ($req['where']) {
+                case 'subjectAndArticle' : $search .= ' and ('.$where[0].' ) or ('.$where[1].')'; break;
+                case 'subject' : $search .= ' and '.$where[0]; break;
+                case 'article' : $search .= ' and '.$where[1]; break;
+                case 'writer' : $search .= ' and '.$where[2];  break;
+                case 'mb_id' : $search .= ' and '.$where[3]; break;
+                default : $search .= ' and ('.$where[0].') or ('.$where[1].') or ('.$where[2].') or ('.$where[3].')'; break;
+            }
+        }
+
+        $is_category_show = ($boardconf['use_category'] == 'Y' && $boardconf['category'] != '') ? true : false;
+        $is_ctr_show = ($MB['level'] <= $boardconf['ctr_level'] || $MB['adm'] == 'Y') ? true : false;
+        $is_comment_show = ($boardconf['use_comment'] == 'Y') ? true : false;
+        $is_likes_show = ($boardconf['use_likes'] == 'Y') ? true : false;
+        $is_tf_source_show = ($req['is_ftlist'] == 'Y') ? false : true;
+
+        // notice
+        $sql->query(
+            "
+            select *, member.mb_profileimg,
+            ( select count(*) from {$sql->table("mod:board_cmt_".$board_id)} where `bo_idx`=board.idx ) comment_cnt,
+            ( select count(*) from {$sql->table("mod:board_like")} where `id`='$board_id' and `data_idx`=board.idx and `likes`>0 ) likes_cnt,
+            ( select count(*) from {$sql->table("mod:board_like")} where `id`='$board_id' and `data_idx`=board.idx and `unlikes`>0 ) unlikes_cnt
+            from {$sql->table("mod:board_data_".$board_id)} board
+            left outer join {$sql->table("member")} member
+            on board.mb_idx=member.mb_idx
+            where board.use_notice='Y'
+            order by board.regdate desc
+            ", []
+        );
+        $notice_cnt = $sql->getcount();
+        $print_notice = array();
+
+        if ($notice_cnt > 0) {
+            do {
+                $arr = $sql->fetchs();
+                $print_notice[] = get_listarr($req, $arr, $paging, $thisuri, $keyword_decode, $category);
+
+            } while ($sql->nextRec());
+        }
+
+        // list
+        $paging->thispage = $thisuri;
+        $paging->setlimit($boardconf['list_limit']);
+
+        $sql->query(
+            $paging->query(
+                "
+                select *, member.mb_profileimg,
+                ( select count(*) from {$sql->table("mod:board_cmt_".$board_id)} where `bo_idx`=board.idx ) comment_cnt,
+                ( select count(*) from {$sql->table("mod:board_like")} where `id`='$board_id' and `data_idx`=board.idx and `likes`>0 ) likes_cnt,
+                ( select count(*) from {$sql->table("mod:board_like")} where `id`='$board_id' and `data_idx`=board.idx and `unlikes`>0 ) unlikes_cnt
+                from {$sql->table("mod:board_data_".$board_id)} board
+                left outer join {$sql->table("member")} member
+                on board.mb_idx=member.mb_idx
+                where board.use_notice='N' $search
+                order by board.ln desc, board.rn asc, board.regdate desc
+                ",
+                $cols
+            )
+        );
+        $total_cnt = Func::number($paging->totalCount);
+        $print_arr = array();
+
+        if ($sql->getcount() > 0) {
+            do {
+                $arr = $sql->fetchs();
+                $print_arr[] = get_listarr($req, $arr, $paging, $thisuri, $keyword_decode, $category);
+
+            } while($sql->nextRec());
+        }
+
+        $pagingprint = $paging->pagingprint('&category='.$category.'&where='.$req['where'].'&keyword='.$keyword_decode);
+
+        $this->set('print_notice', $print_notice);
+        $this->set('print_arr', $print_arr);
+        $this->set('pagingprint', $pagingprint);
+        $this->set('is_category_show', $is_category_show);
+        $this->set('is_comment_show', $is_comment_show);
+        $this->set('is_ctr_show', $is_ctr_show);
+        $this->set('is_likes_show', $is_likes_show);
+        $this->set('is_tf_source_show', $is_tf_source_show);
+        $this->set('category', $category);
+        $this->set('page', $req['page']);
+        $this->set('where', $req['where']);
+        $this->set('board_id', $board_id);
+        $this->set('keyword', $keyword);
+        $this->set('thisuri', $thisuri);
+        $this->set('print_category', print_category($category, $req['where'], $keyword_decode, $thisuri));
+        $this->set('total_cnt', total_cnt($notice_cnt, $total_cnt));
+        $this->set('ctr_btn', ctr_btn());
+        $this->set('write_btn', write_btn($req['page'], $req['where'], $keyword_decode, $category, $thisuri));
+        $this->set('where_slted', where_slted($req['where']));
+        $this->set('cancel_link', $thisuri);
+        $this->set('top_source', $boardconf['top_source']);
+        $this->set('bottom_source', $boardconf['bottom_source']);
+    }
+
+    public function form()
+    {
+        $form = new \Controller\Make_View_Form();
+        $form->set('id', 'board-listForm');
+        $form->set('type', 'static');
+        $form->set('target', 'view');
+        $form->set('method', 'get');
+        $form->run();
+    }
+
+    public function sch_form()
+    {
+        $form = new \Controller\Make_View_Form();
+        $form->set('id', 'board-sch');
+        $form->set('type', 'static');
+        $form->set('target', 'view');
+        $form->set('method', 'get');
+        $form->run();
+    }
+
+}

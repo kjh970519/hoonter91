@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+  web:
+    build: .
+    container_name: php72_web
+    volumes:
+      - ./www:/var/www/html
+    depends_on:
+      - hoonter91_db
+    networks:
+      - web_proxy
+      - default
+
+  hoonter91_db:
+    image: mysql:5.6
+    container_name: mysql56_db
+    restart: always
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: hoon45789
+      MYSQL_DATABASE: hoonter91
+      MYSQL_USER: hoonter91
+      MYSQL_PASSWORD: hoon45789
+      TZ: Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+    volumes:
+      - db_data:/var/lib/mysql
+
+volumes:
+  db_data:
+
+networks:
+  web_proxy:
+    external: true
