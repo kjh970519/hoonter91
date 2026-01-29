@@ -200,7 +200,7 @@ class Write extends \Controller\Make_Controller {
                     $arr['article'] = '<br /><br /><br /><div><strong>Org: '.$arr['subject'].'</strong><br />'.$arr['article'].'</div>';
 
                 } else {
-                    $arr['article'] = '\n\n\nOrg: '.$arr['subject'].'\n'.$arr['article'];
+                    $arr['article'] = "\n\n\nOrg: ".$arr['subject']."\n".$arr['article'];
                 }
 
                 $arr['subject'] = 'Re: '.$arr['subject'];

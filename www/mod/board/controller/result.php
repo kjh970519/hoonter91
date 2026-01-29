@@ -237,28 +237,39 @@ class Result extends \Controller\Make_Controller {
 
             $tmb = '';
 
-            // DEBUG
-            error_log('THUMB_DEBUG: file1=' . ($arr['file1'] ?? 'NULL') . ', file2=' . ($arr['file2'] ?? 'NULL') . ', article_len=' . strlen($arr['article'] ?? ''));
-            error_log('THUMB_DEBUG: article_sample=' . substr($arr['article'] ?? '', 0, 500));
-
-            // file2에서 썸네일 추출
-            if ($arr['file2']) {
+            // file2에서 썸네일 추출 (우선순위 1)
+            if (!empty($arr['file2'])) {
                 $fileinfo = Func::get_fileinfo($arr['file2']);
-                $tmb = ($fileinfo['storage'] == 'Y') ? $fileinfo['replink'] : PH_DOMAIN.PH_DATA_DIR.$fileinfo['filepath'].'/thumb/'.$arr['file2'];
-            }
-            // file1에서 썸네일 추출
-            else if ($arr['file1']) {
-                $fileinfo = Func::get_fileinfo($arr['file1']);
                 if ($fileinfo) {
-                    $tmb = ($fileinfo['storage'] == 'Y') ? $fileinfo['replink'] : PH_DOMAIN.PH_DATA_DIR.$fileinfo['filepath'].'/thumb/'.$arr['file1'];
+                    if ($fileinfo['storage'] == 'Y') {
+                        $tmb = $fileinfo['replink'];
+                    } else {
+                        // 썸네일 파일 존재 여부 확인
+                        $thumb_path = PH_DATA_PATH.$fileinfo['filepath'].'/thumb/'.$arr['file2'];
+                        if (file_exists($thumb_path)) {
+                            $tmb = PH_DOMAIN.PH_DATA_DIR.$fileinfo['filepath'].'/thumb/'.$arr['file2'];
+                        } else {
+                            // 썸네일 없으면 원본 사용
+                            $tmb = PH_DOMAIN.PH_DATA_DIR.$fileinfo['filepath'].'/'.$arr['file2'];
+                        }
+                    }
                 }
             }
-            // 본문에서 첫 번째 이미지 추출
-            else if ($arr['article']) {
+            // 본문에서 첫 번째 이미지 추출 (우선순위 2)
+            else if (!empty($arr['article'])) {
                 preg_match('/<img[^>]+src=["\']([^"\']+)["\']/', $arr['article'], $matches);
-                error_log('THUMB_DEBUG: regex matches=' . print_r($matches, true));
                 if (!empty($matches[1])) {
                     $img_src = $matches[1];
+
+                    // /data/board/로 시작하는 로컬 이미지인 경우 썸네일 경로로 변환
+                    if (preg_match('#^/data/board/([^/]+)/(\d+)/([^/]+)$#', $img_src, $path_matches)) {
+                        // $path_matches[1] = board_id, [2] = yyyymm, [3] = filename
+                        $thumb_path = PH_DATA_PATH.'/board/'.$path_matches[1].'/'.$path_matches[2].'/thumb/'.$path_matches[3];
+                        if (file_exists($thumb_path)) {
+                            $img_src = '/data/board/'.$path_matches[1].'/'.$path_matches[2].'/thumb/'.$path_matches[3];
+                        }
+                    }
+
                     // 상대 경로인 경우 도메인 추가
                     if (strpos($img_src, 'http') !== 0) {
                         $img_src = PH_DOMAIN . $img_src;
@@ -267,23 +278,6 @@ class Result extends \Controller\Make_Controller {
                 }
             }
 
-            error_log('THUMB_DEBUG: result=' . $tmb);
-
-            return $tmb;
-        }
-
-        // 썸네일 추출 (이전 버전)
-        function thumbnail_old($arr)
-        {
-            global $CONF, $board_id;
-            
-            $tmb = '';
-            
-            if ($arr['file2']) {
-                $fileinfo = Func::get_fileinfo($arr['file2']);
-                $tmb = ($fileinfo['storage'] == 'Y') ? $fileinfo['replink'] : PH_DOMAIN.PH_DATA_DIR.$fileinfo['filepath'].'/thumb/'.$arr['file2'];
-            }
-            
             return $tmb;
         }
 

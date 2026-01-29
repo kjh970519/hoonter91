@@ -146,6 +146,8 @@ def process_post(post, matched_files, dry_run=True):
 
     images_html = []
     file_seq = 1
+    first_image_hash = None  # 첫 번째 이미지 파일명 저장용
+    has_image = False
 
     for f in matched_files:
         filename = f["filename"]
@@ -176,26 +178,45 @@ def process_post(post, matched_files, dry_run=True):
         query = "INSERT INTO zg_dataupload (filepath, orgfile, repfile, storage, byte, regdate) VALUES ('" + filepath + "', '" + esc_orig + "', '" + hash_name + "', 'N', " + str(file_size) + ", NOW())"
         run_mysql_update(query)
 
+        # 모든 파일(이미지 포함)을 zg_mod_board_files에 등록
+        query = "INSERT INTO zg_mod_board_files (id, data_idx, file_seq, file_name, regdate) VALUES ('" + board_id + "', " + post_idx + ", " + str(file_seq) + ", '" + hash_name + "', NOW())"
+        run_mysql_update(query)
+
         if is_img:
+            has_image = True
+            # 첫 번째 이미지 파일명 저장 (file2용)
+            if first_image_hash is None:
+                first_image_hash = hash_name
+
             thumb_src = os.path.join(THUMBS_DIR, filename)
             if os.path.exists(thumb_src):
                 shutil.copy2(thumb_src, os.path.join(thumb_dir, hash_name))
 
             img_url = "/data/board/" + board_id + "/" + upload_dir + "/" + hash_name
             images_html.append('<p><img src="' + img_url + '" alt="" style="max-width:100%;" /></p>')
-        else:
-            query = "INSERT INTO zg_mod_board_files (id, data_idx, file_seq, file_name, regdate) VALUES ('" + board_id + "', " + post_idx + ", " + str(file_seq) + ", '" + hash_name + "', NOW())"
-            run_mysql_update(query)
 
         file_seq += 1
 
-    if images_html and not dry_run:
-        new_content = "\\n".join(images_html)
-        esc_content = escape_sql(new_content)
+    if not dry_run:
+        # file1, file2 업데이트
         table = "zg_mod_board_data_" + board_id
-        query = "UPDATE " + table + " SET article = CONCAT(IFNULL(article,''), '" + esc_content + "') WHERE idx = " + post_idx
-        run_mysql_update(query)
-        print("  [OK] Added " + str(len(images_html)) + " images to article")
+        if has_image and first_image_hash:
+            query = "UPDATE " + table + " SET file1 = 'image', file2 = '" + first_image_hash + "' WHERE idx = " + post_idx
+            run_mysql_update(query)
+            print("  [OK] Updated file1='image', file2='" + first_image_hash[:20] + "...'")
+        elif file_seq > 1:
+            # 이미지가 없고 일반 파일만 있는 경우
+            query = "UPDATE " + table + " SET file1 = 'file' WHERE idx = " + post_idx
+            run_mysql_update(query)
+            print("  [OK] Updated file1='file'")
+
+        # 본문에 이미지 추가
+        if images_html:
+            new_content = "".join(images_html)
+            esc_content = escape_sql(new_content)
+            query = "UPDATE " + table + " SET article = CONCAT(IFNULL(article,''), '" + esc_content + "') WHERE idx = " + post_idx
+            run_mysql_update(query)
+            print("  [OK] Added " + str(len(images_html)) + " images to article")
 
 def main():
     import sys

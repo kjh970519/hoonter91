@@ -68,11 +68,10 @@
     #header {background: #ffffff;box-shadow: 0 0 5px rgba(0,0,0,0.1);left: 0;position: fixed;top: 0;width: 100%;}
     #header:after {background: rgba(0,0,0,0.1);bottom: -1px;content: '';display: block;height: 1px;left: 0;position: absolute;width: 100%;}
     #header .inner {height: 60px;width: auto;}
-    #header .logo {left: 20px;}
-    #header .logo h1 img {height: 20px;width: auto;}
+    #header .logo {left: 20px;display: flex;align-items: center;}
+    #header .logo h1 img {height: 32px;width: auto;}
+    #header .logo .site-title {display: inline-block;font-size: 16px;font-weight: 700;color: #333;margin-left: 8px;}
     #header nav {display: none;}
-
-    #sch {display: none;}
 
     #tnb {display: none;}
 

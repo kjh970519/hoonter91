@@ -120,9 +120,6 @@ class View extends \Controller\Make_Controller {
         // 첨부 이미지 출력
         function print_imgfile($arr)
         {
-            //월별로 디렉토리 구분
-            $upload_dir = date('ym');
-            
             $files = array();
 
             if (!empty($arr)) {
@@ -132,22 +129,31 @@ class View extends \Controller\Make_Controller {
                     $filetype = Func::get_filetype($value['file_name']);
                     $fileinfo = Func::get_fileinfo($value['file_name']);
 
+                    if (!$fileinfo) {
+                        $files[] = null;
+                        continue;
+                    }
+
                     if (Func::chkintd('match', $filetype, SET_IMGTYPE)) {
-                        if ($fileinfo['storage'] == 'N' && file_exists(MOD_BOARD_DATA_PATH.'/'.View::$boardconf['id'].'/'.$upload_dir.'/thumb/'.$fileinfo['repfile'])) {
-                            $files[] = '<img src=\''.MOD_BOARD_DATA_DIR.'/'.View::$boardconf['id'].'/'.$upload_dir.'/thumb/'.$fileinfo['repfile'].'\' alt=\'첨부된 이미지파일\' />';
+                        // fileinfo의 filepath를 사용하여 실제 파일 경로 확인
+                        $thumb_path = PH_DATA_PATH.$fileinfo['filepath'].'/thumb/'.$fileinfo['repfile'];
+
+                        if ($fileinfo['storage'] == 'N' && file_exists($thumb_path)) {
+                            $files[] = '<img src=\''.PH_DATA_DIR.$fileinfo['filepath'].'/thumb/'.$fileinfo['repfile'].'\' alt=\'첨부된 이미지파일\' />';
+                            // GIF는 원본도 표시 (애니메이션 유지)
                             if (Func::get_filetype($fileinfo['repfile']) == 'gif') {
-                                $files[] = '<img src=\''.MOD_BOARD_DATA_DIR.'/'.View::$boardconf['id'].'/'.$fileinfo['repfile'].'\' alt=\'첨부된 이미지파일\' />';
+                                $files[] = '<img src=\''.PH_DATA_DIR.$fileinfo['filepath'].'/'.$fileinfo['repfile'].'\' alt=\'첨부된 이미지파일\' />';
                             }
                         } else {
                             $files[] = '<img src=\''.$fileinfo['replink'].'\' alt=\'첨부된 이미지파일\' />';
                         }
-    
+
                     } else {
                         $files[] = null;
                     }
                 }
             }
-            
+
             return $files;
         }
 
